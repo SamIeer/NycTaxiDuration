@@ -1,0 +1,6 @@
+# ---- Data ----
+data/train.csv
+data/test.csv
+data/sample_submission.csv
+*.parquet
+*.feather
