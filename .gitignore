@@ -4,3 +4,7 @@ data/test.csv
 data/sample_submission.csv
 *.parquet
 *.feather
+
+#------Notebook----------
+.virtual_documents
+anaconda_projects
