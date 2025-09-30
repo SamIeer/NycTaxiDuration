@@ -116,92 +116,92 @@ train_features.to_csv("data/input.csv", index=False)
 num_attribs = train_features.drop("week_day", axis=1)
 cat_attribs = train_features[["week_day"]]
 
-#PipeLInes
+# PipeLInes
 # NUmerical pipeline
-# num_pipeline = Pipeline([
-#     ("imputer", SimpleImputer(strategy="median")),
-#     ("scaler", StandardScaler()),
-# ])
+num_pipeline = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler()),
+])
 
-# #Categorical pipeline
-# cat_pipeline = Pipeline([
-#     # ("ordinal", OrdinalEncoder())  # Use this if you prefer ordinal encoding
-#     ("onehot", OneHotEncoder(handle_unknown="ignore"))
-# ])
+#Categorical pipeline
+cat_pipeline = Pipeline([
+    # ("ordinal", OrdinalEncoder())  # Use this if you prefer ordinal encoding
+    ("onehot", OneHotEncoder(handle_unknown="ignore"))
+])
 
-# # Full Pipeline 
-# full_pipeline = ColumnTransformer([
-#     ("num", num_pipeline, num_attribs.columns),
-#     ("cat", cat_pipeline, cat_attribs.columns)
-# ])
+# Full Pipeline 
+full_pipeline = ColumnTransformer([
+    ("num", num_pipeline, num_attribs.columns),
+    ("cat", cat_pipeline, cat_attribs.columns)
+])
 
-# # Transform the data
-# train_prepared = full_pipeline.fit_transform(train_features)
-# train_prepared.shape
-
-
-# #Training and Testing the Data
+# Transform the data
+train_prepared = full_pipeline.fit_transform(train_features)
+train_prepared.shape
 
 
-# #Linear Regression
-# lin_reg = LinearRegression()
-# lin_reg.fit(train_prepared, train_labels)
-
-# # Decission Tree
-# tree_reg = DecisionTreeRegressor(random_state=42)
-# tree_reg.fit(train_prepared,train_labels)
-
-# # Random Forest
-# forest_reg = RandomForestRegressor(
-#     n_estimators=50,      # default 100
-#     max_depth=15,         # limit depth
-#     max_features='sqrt',  # use fewer features per split
-#     n_jobs=-1,
-#     random_state=42)
-# forest_reg.fit(train_prepared, train_labels)
+#Training and Testing the Data
 
 
-# # Predict using training data
-# lin_preds = lin_reg.predict(train_prepared)
-# tree_preds = tree_reg.predict(train_prepared)
-# forest_preds = forest_reg.predict(train_prepared)
+#Linear Regression
+lin_reg = LinearRegression()
+lin_reg.fit(train_prepared, train_labels)
 
-# # Calculate RMSE
-# lin_rmse = -cross_val_score(
-#     lin_reg,
-#     train_prepared,
-#     train_labels,
-#     scoring="neg_root_mean_squared_error",
-#     cv=10)
+# Decission Tree
+tree_reg = DecisionTreeRegressor(random_state=42)
+tree_reg.fit(train_prepared,train_labels)
 
-# tree_rmse = -cross_val_score(
-#     tree_reg,
-#     train_prepared,
-#     train_labels,
-#     scoring="neg_root_mean_squared_error",
-#     cv=10)
-
-# forest_rmse = -cross_val_score(
-#     forest_reg,
-#     train_prepared,
-#     train_labels,
-#     scoring="neg_root_mean_squared_error",
-#     cv=10)
+# Random Forest
+forest_reg = RandomForestRegressor(
+    n_estimators=50,      # default 100
+    max_depth=15,         # limit depth
+    max_features='sqrt',  # use fewer features per split
+    n_jobs=-1,
+    random_state=42)
+forest_reg.fit(train_prepared, train_labels)
 
 
-# # Evaluate Decision Tree with cross-validation
+# Predict using training data
+lin_preds = lin_reg.predict(train_prepared)
+tree_preds = tree_reg.predict(train_prepared)
+forest_preds = forest_reg.predict(train_prepared)
+
+# Calculate RMSE
+lin_rmse = -cross_val_score(
+    lin_reg,
+    train_prepared,
+    train_labels,
+    scoring="neg_root_mean_squared_error",
+    cv=10)
+
+tree_rmse = -cross_val_score(
+    tree_reg,
+    train_prepared,
+    train_labels,
+    scoring="neg_root_mean_squared_error",
+    cv=10)
+
+forest_rmse = -cross_val_score(
+    forest_reg,
+    train_prepared,
+    train_labels,
+    scoring="neg_root_mean_squared_error",
+    cv=10)
 
 
-# # WARNING: Scikit-Learn’s scoring uses utility functions (higher is better), so RMSE is returned as negative.
-# # We use minus (-) to convert it back to positive RMSE.
-# print("Linear Regrosser CV RMSEs:", lin_rmse)
-# print("\nCross-Validation Performance (Decision Tree):")
-# print(pd.Series(lin_rmse).describe())
+# Evaluate Decision Tree with cross-validation
 
-# print("Decision Tree CV RMSEs:", tree_rmse)
-# print("\nCross-Validation Performance (Decision Tree):")
-# print(pd.Series(tree_rmse).describe())
 
-# print("Random Forest CV RMSEs:", forest_rmse)
-# print("\nCross-Validation Performance (Decision Tree):")
-# print(pd.Series(forest_rmse).describe())
+# WARNING: Scikit-Learn’s scoring uses utility functions (higher is better), so RMSE is returned as negative.
+# We use minus (-) to convert it back to positive RMSE.
+print("Linear Regrosser CV RMSEs:", lin_rmse)
+print("\nCross-Validation Performance (Decision Tree):")
+print(pd.Series(lin_rmse).describe())
+
+print("Decision Tree CV RMSEs:", tree_rmse)
+print("\nCross-Validation Performance (Decision Tree):")
+print(pd.Series(tree_rmse).describe())
+
+print("Random Forest CV RMSEs:", forest_rmse)
+print("\nCross-Validation Performance (Decision Tree):")
+print(pd.Series(forest_rmse).describe())
