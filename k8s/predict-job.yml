@@ -1,0 +1,27 @@
+# predict-job.yml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nyc-taxi-predict
+  namespace: nyc-taxi
+spec:
+  template:
+    spec:
+      containers:
+      - name: predict
+        image: sameer/nyc-taxi:latest
+        command: ["python", "src/predict.py"]
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+        - name: results
+          mountPath: /app/results
+      restartPolicy: Never
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: taxi-model-pvc
+      - name: results
+        persistentVolumeClaim:
+          claimName: taxi-results-pvc
+  backoffLimit: 2

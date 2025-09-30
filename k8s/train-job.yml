@@ -1,0 +1,22 @@
+# train-job.yml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nyc-taxi-train
+  namespace: nyc-taxi
+spec:
+  template:
+    spec:
+      containers:
+      - name: train
+        image: sameer/nyc-taxi:latest   # <-- build & push your Docker image
+        command: ["python", "src/train.py"]
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+      restartPolicy: Never
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: taxi-model-pvc
+  backoffLimit: 2

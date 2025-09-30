@@ -1,0 +1,25 @@
+# pvc.yml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: taxi-model-pvc
+  namespace: nyc-taxi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: taxi-results-pvc
+  namespace: nyc-taxi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
