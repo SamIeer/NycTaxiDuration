@@ -1,207 +1,101 @@
+# =============================
+# NYC Taxi Trip Duration ML Model
+# =============================
+
+# 1. Libraries
 import pandas as pd
-import numpy as np 
+import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
-from sklearn.compose import ColumnTransformer #For creating Full Pipelines
+import seaborn as sns
+import zipfile, os, warnings
 
-# Train and Test Models on the Training Set
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error , root_mean_squared_error
-from sklearn.model_selection import cross_val_score
-
-# Load data
-df = pd.read_csv("data/train.csv")  # <-- check folder name & case!
-print(df.head())                          # ✅ shows first 5 rows
+from sklearn.model_selection import train_test_split, KFold, cross_val_score
+from sklearn.metrics import mean_squared_log_error
+from xgboost import XGBRegressor
 
 
-#Shuffling the data Getting Train and Test 
-def shuffle_and_split(data, test_ratio):
-    np.random.seed(42) # set the seed for reproducibility
-    shuffled_indices = np.random.permutation(len(data)) # this return the shuffled indices
-    test_set_size = int(len(data) * test_ratio)
-    test_indices = shuffled_indices[:test_set_size]
-    train_indices = shuffled_indices[test_set_size:]
-    return data.iloc[train_indices], data.iloc[test_indices]
+# 2. Load Dataset
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
 
-train , test = shuffle_and_split(df, 0.4)
-df = train.copy()
+print("Train shape:", train_df.shape)
+print("Test shape :", test_df.shape)
+print(train_df.head())
 
+# 3. Target Transformation (log1p)
+train_df['log_trip_duration'] = np.log1p(train_df['trip_duration'])
 
-# For Getting the Distance From Cordinates
-locs = pd.DataFrame({
-    'lat1':df['pickup_longitude'],
-    'lon1':df['pickup_latitude'],
-    'lat2':df['dropoff_longitude'],
-    'lon2':df['pickup_latitude']    })
-    
-    # Haversine vector 
+# 4. Feature Engineering
+def haversine(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    dlat, dlon = lat2-lat1, lon2-lon1
+    a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
+    return 6371 * 2 * np.arcsin(np.sqrt(a))  # distance in km
 
-def haversine_vector(lat1, lon1, lat2, lon2, radius=6371):
-    """
-    Calculate the great-circle distance between two sets of coordinates
-    using the Haversine formula (vectorized).
+def manhattan(lat1, lon1, lat2, lon2):
+    a = haversine(lat1, lon1, lat1, lon2)
+    b = haversine(lat1, lon2, lat2, lon2)
+    return a + b
 
-    Parameters
-    ----------
-    lat1, lon1 : array-like
-        Latitudes & longitudes of the first set of points (in degrees).
-    lat2, lon2 : array-like
-        Latitudes & longitudes of the second set of points (in degrees).
-    radius : float
-        Earth radius in kilometers (default 6371 km). Use 3956 for miles.
+# Distance Features
+train_df['haversine'] = haversine(train_df['pickup_latitude'], train_df['pickup_longitude'],
+                                  train_df['dropoff_latitude'], train_df['dropoff_longitude'])
+train_df['manhattan'] = manhattan(train_df['pickup_latitude'], train_df['pickup_longitude'],
+                                  train_df['dropoff_latitude'], train_df['dropoff_longitude'])
 
-    Returns
-    -------
-    numpy.ndarray
-        Distances in kilometers (same shape as input arrays).
-    """
-    # Convert degrees to radians
-    lat1 = np.radians(lat1)
-    lon1 = np.radians(lon1)
-    lat2 = np.radians(lat2)
-    lon2 = np.radians(lon2)
+# Time Features
+train_df['pickup_datetime'] = pd.to_datetime(train_df['pickup_datetime'])
+train_df['hour']   = train_df['pickup_datetime'].dt.hour
+train_df['day']    = train_df['pickup_datetime'].dt.day
+train_df['weekday']= train_df['pickup_datetime'].dt.weekday
+train_df['month']  = train_df['pickup_datetime'].dt.month
+train_df['is_weekend'] = (train_df['weekday'] >= 5).astype(int)
+train_df['rush_hour']  = train_df['hour'].isin([7,8,9,16,17,18,19]).astype(int)
 
-    # Compute differences
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
+# Repeat for test_df
+test_df['haversine'] = haversine(test_df['pickup_latitude'], test_df['pickup_longitude'],
+                                 test_df['dropoff_latitude'], test_df['dropoff_longitude'])
+test_df['manhattan'] = manhattan(test_df['pickup_latitude'], test_df['pickup_longitude'],
+                                 test_df['dropoff_latitude'], test_df['dropoff_longitude'])
 
-    # Haversine formula
-    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
-    c = 2 * np.arcsin(np.sqrt(a))
-    return radius * c
-df['distance_km'] = haversine_vector(locs.lat1, locs.lon1, locs.lat2, locs.lon2)
+test_df['pickup_datetime'] = pd.to_datetime(test_df['pickup_datetime'])
+test_df['hour']   = test_df['pickup_datetime'].dt.hour
+test_df['day']    = test_df['pickup_datetime'].dt.day
+test_df['weekday']= test_df['pickup_datetime'].dt.weekday
+test_df['month']  = test_df['pickup_datetime'].dt.month
+test_df['is_weekend'] = (test_df['weekday'] >= 5).astype(int)
+test_df['rush_hour']  = test_df['hour'].isin([7,8,9,16,17,18,19]).astype(int)
 
+# 5. Feature Selection
+features = ['vendor_id','passenger_count','pickup_longitude','pickup_latitude',
+            'dropoff_longitude','dropoff_latitude','haversine','manhattan',
+            'hour','day','weekday','month','is_weekend','rush_hour']
 
-# Converting the Pickup time to timestamp 
-# and pickup date to week days
-def add_day_and_duration(data,pic_time):
-    data[pic_time] = pd.to_datetime(data[pic_time])
-    data['week_day'] = data[pic_time].dt.day_name()
-    return data
-df = add_day_and_duration(df, 'pickup_datetime')
+X = train_df[features]
+y = train_df['log_trip_duration']
+X_test = test_df[features]
 
-# Timestamp
-df['timestamp'] = df['pickup_datetime'].astype('int64') // 10**9  # seconds
+# 6. Train-Test Split
+X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
 
+# 7. Model Training (XGBoost)
+model = XGBRegressor(n_estimators=300, learning_rate=0.1, max_depth=6,
+                     subsample=0.8, colsample_bytree=0.8, random_state=42)
+model.fit(X_train, y_train)
 
-#Making a Copies
-temp = train.copy()
-train = df.copy()
-df = temp.copy()
+# 8. Evaluation
+y_pred = model.predict(X_valid)
+rmsle = np.sqrt(mean_squared_log_error(np.expm1(y_valid), np.expm1(y_pred)))
+print("Validation RMSLE:", rmsle)
 
+# 9. Final Training on Full Data
+model.fit(X, y)
 
-#Extracting the "id" from id column  and Dropinmg some columns
-train['id'] = train['id'].str.extract("(\d+)").astype(int)
+# 10. Prediction on Test Data
+test_pred = model.predict(X_test)
+test_pred = np.expm1(test_pred)  # inverse log transform
 
-train.drop(["pickup_datetime","dropoff_datetime", "store_and_fwd_flag" ],axis=1,inplace=True)
-
-# #Seperating Features and Labels Form train Dataset
-train_features = train.drop("trip_duration", axis=1)
-train_labels = train["trip_duration"].copy()
-
-
-# Save to CSV
-train_features.to_csv("data/input.csv", index=False)
-
-
-
-
-#Creating the pipelines for the Numerical and Categorical data
-#Seperate numerical and categorical columns 
-num_attribs = train_features.drop("week_day", axis=1)
-cat_attribs = train_features[["week_day"]]
-
-# PipeLInes
-# NUmerical pipeline
-num_pipeline = Pipeline([
-    ("imputer", SimpleImputer(strategy="median")),
-    ("scaler", StandardScaler()),
-])
-
-#Categorical pipeline
-cat_pipeline = Pipeline([
-    # ("ordinal", OrdinalEncoder())  # Use this if you prefer ordinal encoding
-    ("onehot", OneHotEncoder(handle_unknown="ignore"))
-])
-
-# Full Pipeline 
-full_pipeline = ColumnTransformer([
-    ("num", num_pipeline, num_attribs.columns),
-    ("cat", cat_pipeline, cat_attribs.columns)
-])
-
-# Transform the data
-train_prepared = full_pipeline.fit_transform(train_features)
-train_prepared.shape
-
-
-#Training and Testing the Data
-
-
-#Linear Regression
-lin_reg = LinearRegression()
-lin_reg.fit(train_prepared, train_labels)
-
-# Decission Tree
-tree_reg = DecisionTreeRegressor(random_state=42)
-tree_reg.fit(train_prepared,train_labels)
-
-# Random Forest
-forest_reg = RandomForestRegressor(
-    n_estimators=50,      # default 100
-    max_depth=15,         # limit depth
-    max_features='sqrt',  # use fewer features per split
-    n_jobs=-1,
-    random_state=42)
-forest_reg.fit(train_prepared, train_labels)
-
-
-# Predict using training data
-lin_preds = lin_reg.predict(train_prepared)
-tree_preds = tree_reg.predict(train_prepared)
-forest_preds = forest_reg.predict(train_prepared)
-
-# Calculate RMSE
-lin_rmse = -cross_val_score(
-    lin_reg,
-    train_prepared,
-    train_labels,
-    scoring="neg_root_mean_squared_error",
-    cv=10)
-
-tree_rmse = -cross_val_score(
-    tree_reg,
-    train_prepared,
-    train_labels,
-    scoring="neg_root_mean_squared_error",
-    cv=10)
-
-forest_rmse = -cross_val_score(
-    forest_reg,
-    train_prepared,
-    train_labels,
-    scoring="neg_root_mean_squared_error",
-    cv=10)
-
-
-# Evaluate Decision Tree with cross-validation
-
-
-# WARNING: Scikit-Learn’s scoring uses utility functions (higher is better), so RMSE is returned as negative.
-# We use minus (-) to convert it back to positive RMSE.
-print("Linear Regrosser CV RMSEs:", lin_rmse)
-print("\nCross-Validation Performance (Decision Tree):")
-print(pd.Series(lin_rmse).describe())
-
-print("Decision Tree CV RMSEs:", tree_rmse)
-print("\nCross-Validation Performance (Decision Tree):")
-print(pd.Series(tree_rmse).describe())
-
-print("Random Forest CV RMSEs:", forest_rmse)
-print("\nCross-Validation Performance (Decision Tree):")
-print(pd.Series(forest_rmse).describe())
+# 11. Save Submission
+submission = pd.DataFrame({"id": test_df["id"], "trip_duration": test_pred})
+submission.to_csv("submission.csv", index=False)
+print("Submission file created: submission.csv")
